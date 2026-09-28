@@ -1,0 +1,365 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  name      String
+  email     String?  @unique
+  password  String
+  role      String   @default("CASHIER") // ADMIN, CASHIER, INVENTORY_MANAGER
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sales             Sale[]
+  purchases         Purchase[]
+  expenses          Expense[]
+  auditLogs         AuditLog[]
+  stockTransactions StockTransaction[]
+}
+
+model Category {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  color       String?   @default("#d97706") // amber/saffron theme
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  products    Product[]
+}
+
+model Supplier {
+  id             String    @id @default(uuid())
+  name           String
+  company        String?
+  mobile         String?
+  email          String?
+  address        String?
+  gstNumber      String?
+  openingBalance Float     @default(0)
+  currentBalance Float     @default(0) // Amount owed to supplier
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  products        Product[]
+  purchases       Purchase[]
+  purchaseReturns PurchaseReturn[]
+  ledger          SupplierLedger[]
+  payments        Payment[]
+}
+
+model Customer {
+  id             String    @id @default(uuid())
+  name           String
+  mobile         String?   @unique
+  email          String?
+  address        String?
+  openingBalance Float     @default(0)
+  currentBalance Float     @default(0) // Credit owed by customer
+  totalPurchases Float     @default(0)
+  lastPurchase   DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  sales       Sale[]
+  saleReturns SaleReturn[]
+  ledger      CustomerLedger[]
+  payments    Payment[]
+}
+
+model Product {
+  id               String   @id @default(uuid())
+  name             String
+  imageUrl         String?
+  categoryId       String
+  subcategory      String?
+  brand            String?  @default("Jay Mataji Rajwadi")
+  sku              String   @unique
+  barcode          String?  @unique
+  unit             String   @default("Cup") // Cup, Pcs, Pkt, Bottle, Box, etc.
+  purchasePrice    Float    @default(0)
+  sellingPrice     Float    @default(0)
+  mrp              Float    @default(0)
+  openingStock     Float    @default(0)
+  currentStock     Float    @default(0)
+  minStockLevel    Float    @default(5)
+  maxStockLevel    Float?
+  taxRate          Float    @default(0) // GST % (0, 5, 12, 18, 28)
+  supplierId       String?
+  isAgeRestricted  Boolean  @default(false)
+  complianceNotes  String?
+  status           String   @default("ACTIVE") // ACTIVE, INACTIVE, DISCONTINUED
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  category            Category           @relation(fields: [categoryId], references: [id])
+  supplier            Supplier?          @relation(fields: [supplierId], references: [id])
+  saleItems           SaleItem[]
+  purchaseItems       PurchaseItem[]
+  stockTransactions   StockTransaction[]
+  saleReturnItems     SaleReturnItem[]
+  purchaseReturnItems PurchaseReturnItem[]
+}
+
+model StockTransaction {
+  id            String   @id @default(uuid())
+  productId     String
+  date          DateTime @default(now())
+  type          String   // OPENING_STOCK, PURCHASE, SALE, SALE_RETURN, PURCHASE_RETURN, ADJUSTMENT, DAMAGED, WASTAGE
+  quantity      Float    // Positive for additions, negative for reductions
+  rate          Float    @default(0)
+  reference     String?  // Invoice #, PO #, Reason
+  balanceAfter  Float
+  notes         String?
+  createdById   String?
+  createdAt     DateTime @default(now())
+
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdBy     User?    @relation(fields: [createdById], references: [id])
+}
+
+model Sale {
+  id              String      @id @default(uuid())
+  invoiceNumber   String      @unique
+  customerId      String?
+  cashierId       String?
+  subtotal        Float       @default(0)
+  discount        Float       @default(0)
+  tax             Float       @default(0)
+  total           Float       @default(0)
+  paidAmount      Float       @default(0)
+  changeAmount    Float       @default(0)
+  paymentMethod   String      @default("CASH") // CASH, UPI, CARD, CREDIT, SPLIT
+  paymentDetails  String?     // JSON string for split payments or transaction IDs
+  paymentStatus   String      @default("PAID") // PAID, PENDING, PARTIAL
+  ageVerified     Boolean     @default(false)
+  verifierNotes   String?
+  status          String      @default("COMPLETED") // COMPLETED, RETURNED, CANCELLED
+  notes           String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  customer        Customer?   @relation(fields: [customerId], references: [id])
+  cashier         User?       @relation(fields: [cashierId], references: [id])
+  items           SaleItem[]
+  saleReturns     SaleReturn[]
+}
+
+model SaleItem {
+  id            String   @id @default(uuid())
+  saleId        String
+  productId     String
+  productName   String
+  quantity      Float
+  unitPrice     Float
+  purchasePrice Float    @default(0) // Snapshot at sale for accurate COGS profit report!
+  discount      Float    @default(0)
+  tax           Float    @default(0)
+  totalPrice    Float
+
+  sale          Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product       Product  @relation(fields: [productId], references: [id])
+}
+
+model SaleReturn {
+  id              String           @id @default(uuid())
+  returnNumber    String           @unique
+  saleId          String
+  customerId      String?
+  refundAmount    Float            @default(0)
+  reason          String?
+  status          String           @default("COMPLETED")
+  processedById   String?
+  createdAt       DateTime         @default(now())
+
+  sale            Sale             @relation(fields: [saleId], references: [id])
+  customer        Customer?        @relation(fields: [customerId], references: [id])
+  items           SaleReturnItem[]
+}
+
+model SaleReturnItem {
+  id           String     @id @default(uuid())
+  saleReturnId String
+  productId    String
+  quantity     Float
+  refundRate   Float
+  totalRefund  Float
+
+  saleReturn   SaleReturn @relation(fields: [saleReturnId], references: [id], onDelete: Cascade)
+  product      Product    @relation(fields: [productId], references: [id])
+}
+
+model Purchase {
+  id             String         @id @default(uuid())
+  purchaseNumber String         @unique
+  supplierId     String
+  supplierBillNo String?
+  subtotal       Float          @default(0)
+  tax            Float          @default(0)
+  discount       Float          @default(0)
+  totalAmount    Float          @default(0)
+  paidAmount     Float          @default(0)
+  paymentStatus  String         @default("PAID") // PAID, PENDING, PARTIAL
+  paymentMethod  String         @default("CASH") // CASH, UPI, CARD, BANK_TRANSFER, CREDIT
+  notes          String?
+  receivedById   String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  supplier       Supplier       @relation(fields: [supplierId], references: [id])
+  receivedBy     User?          @relation(fields: [receivedById], references: [id])
+  items          PurchaseItem[]
+  purchaseReturns PurchaseReturn[]
+}
+
+model PurchaseItem {
+  id           String   @id @default(uuid())
+  purchaseId   String
+  productId    String
+  quantity     Float
+  purchaseRate Float
+  tax          Float    @default(0)
+  totalPrice   Float
+
+  purchase     Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product      Product  @relation(fields: [productId], references: [id])
+}
+
+model PurchaseReturn {
+  id               String               @id @default(uuid())
+  returnNumber     String               @unique
+  purchaseId       String
+  supplierId       String
+  refundAmount     Float                @default(0)
+  reason           String?
+  createdAt        DateTime             @default(now())
+
+  purchase         Purchase             @relation(fields: [purchaseId], references: [id])
+  supplier         Supplier             @relation(fields: [supplierId], references: [id])
+  items            PurchaseReturnItem[]
+}
+
+model PurchaseReturnItem {
+  id               String         @id @default(uuid())
+  purchaseReturnId String
+  productId        String
+  quantity         Float
+  purchaseRate     Float
+  totalRefund      Float
+
+  purchaseReturn   PurchaseReturn @relation(fields: [purchaseReturnId], references: [id], onDelete: Cascade)
+  product          Product        @relation(fields: [productId], references: [id])
+}
+
+model CustomerLedger {
+  id            String   @id @default(uuid())
+  customerId    String
+  date          DateTime @default(now())
+  description   String
+  type          String   // DEBIT (sale credit balance added), CREDIT (payment received / balance reduced)
+  amount        Float
+  balanceAfter  Float
+  referenceType String   // SALE, PAYMENT, RETURN, ADJUSTMENT
+  referenceId   String?
+  createdAt     DateTime @default(now())
+
+  customer      Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}
+
+model SupplierLedger {
+  id            String   @id @default(uuid())
+  supplierId    String
+  date          DateTime @default(now())
+  description   String
+  type          String   // CREDIT (purchase debt incurred), DEBIT (payment sent / debt reduced)
+  amount        Float
+  balanceAfter  Float
+  referenceType String   // PURCHASE, PAYMENT, RETURN, ADJUSTMENT
+  referenceId   String?
+  createdAt     DateTime @default(now())
+
+  supplier      Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+}
+
+model Payment {
+  id            String    @id @default(uuid())
+  paymentNumber String    @unique
+  paymentType   String    // CUSTOMER_PAYMENT, SUPPLIER_PAYMENT
+  customerId    String?
+  supplierId    String?
+  amount        Float
+  paymentMethod String    // CASH, UPI, CARD, CHEQUE, BANK_TRANSFER
+  reference     String?   // UPI Ref #, Cheque #
+  notes         String?
+  date          DateTime  @default(now())
+  receivedById  String?
+  createdAt     DateTime  @default(now())
+
+  customer      Customer? @relation(fields: [customerId], references: [id])
+  supplier      Supplier? @relation(fields: [supplierId], references: [id])
+}
+
+model ExpenseCategory {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  expenses    Expense[]
+}
+
+model Expense {
+  id            String          @id @default(uuid())
+  title         String
+  categoryId    String
+  amount        Float
+  paymentMethod String          @default("CASH") // CASH, UPI, CARD, BANK_TRANSFER
+  date          DateTime        @default(now())
+  notes         String?
+  receiptUrl    String?
+  createdById   String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  category      ExpenseCategory @relation(fields: [categoryId], references: [id])
+  createdBy     User?           @relation(fields: [createdById], references: [id])
+}
+
+model BusinessSettings {
+  id                   String   @id @default("default_settings")
+  shopName             String   @default("Jay Mataji Rajwadi Chai")
+  tagline              String?  @default("Taste of Royal Heritage - Authentic Rajwadi Tea & Snacks")
+  address              String   @default("Shop No. 24, Shiv Shopping Center, Sagvadi  , Virani circale to Water Tank Road, near by Rameshvar Mahadev Temple  bhavnagar.")
+  phone                String   @default("8401256000")
+  email                String   @default("contact@jaymatajichai.com")
+  gstNumber            String?  @default("24AAAAA0000A1Z5")
+  invoicePrefix        String   @default("JMRC")
+  startInvoiceNumber   Int      @default(1001)
+  defaultTaxRate       Float    @default(5.0)
+  defaultReceiptWidth  String   @default("80mm") // 58mm or 80mm
+  allowNegativeStock   Boolean  @default(false)
+  lowStockThreshold    Float    @default(10)
+  minAgeForRestricted  Int      @default(18)
+  enableAgeVerification Boolean @default(true)
+  currencySymbol       String   @default("₹")
+  updatedAt            DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  userName  String?
+  action    String   // LOGIN, PRODUCT_CREATE, SALE_CREATE, STOCK_ADJUST, etc.
+  entity    String   // PRODUCT, SALE, PURCHASE, CUSTOMER, etc.
+  entityId  String?
+  details   String?  // JSON string
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  user      User?    @relation(fields: [userId], references: [id])
+}

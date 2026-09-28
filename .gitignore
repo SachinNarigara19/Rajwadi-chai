@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Production build outputs
+dist/
+build/
+*/dist/
+*/build/
+
+# Environment and sensitive secrets
+.env
+.env.*
+!.env.example
+*.env.local
+
+# Databases & SQLite files
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Uploaded content
+server/uploads/*
+!server/uploads/.gitkeep
+
+# TypeScript compiler build info
+*.tsbuildinfo
+
+# IDE & OS cache
+.vscode/
+.idea/
+.kilo/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+Thumbs.db
